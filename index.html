@@ -14,28 +14,136 @@
         </header>
 
         <main>
-            <div class="input-section">
-                <label for="email-input">Enter email address:</label>
-                <input
-                    type="email"
-                    id="email-input"
-                    placeholder="user@example.com"
-                    autocomplete="email"
-                    spellcheck="false"
-                >
-                <button id="validate-btn">Validate</button>
+            <!-- Mode Toggle -->
+            <div class="mode-toggle">
+                <button class="mode-btn active" data-mode="single">
+                    <span class="mode-icon">✉</span>
+                    Single Email
+                </button>
+                <button class="mode-btn" data-mode="bulk">
+                    <span class="mode-icon">📋</span>
+                    Bulk Validate
+                </button>
             </div>
 
-            <div id="results" class="results hidden">
-                <div class="result-card status-card">
-                    <div class="result-icon" id="status-icon"></div>
-                    <div class="result-content">
-                        <h3 id="status-title"></h3>
-                        <p id="status-message"></p>
+            <!-- Single Email Mode -->
+            <div id="single-mode" class="mode-content active">
+                <div class="input-section">
+                    <label for="email-input">Enter email address:</label>
+                    <input
+                        type="email"
+                        id="email-input"
+                        placeholder="user@example.com"
+                        autocomplete="email"
+                        spellcheck="false"
+                    >
+                    <button id="validate-btn">Validate</button>
+                </div>
+
+                <div id="results" class="results hidden">
+                    <div class="result-card status-card">
+                        <div class="result-icon" id="status-icon"></div>
+                        <div class="result-content">
+                            <h3 id="status-title"></h3>
+                            <p id="status-message"></p>
+                        </div>
+                    </div>
+
+                    <div class="result-details" id="result-details"></div>
+                </div>
+            </div>
+
+            <!-- Bulk Mode -->
+            <div id="bulk-mode" class="mode-content">
+                <div class="input-section">
+                    <label>Upload email list (CSV or TXT):</label>
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" accept=".csv,.txt" hidden>
+                        <div class="upload-content">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p class="upload-text">Drag & drop a file or click to browse</p>
+                            <p class="upload-hint">Supports CSV, TXT (max 10,000 emails)</p>
+                        </div>
+                    </div>
+
+                    <div id="file-info" class="file-info hidden">
+                        <div class="file-details">
+                            <span class="file-name" id="file-name"></span>
+                            <span class="file-count" id="file-count"></span>
+                        </div>
+                        <button class="remove-file-btn" id="remove-file-btn">✕</button>
+                    </div>
+
+                    <button id="bulk-validate-btn" disabled>Validate All Emails</button>
+
+                    <!-- Progress Section -->
+                    <div id="progress-section" class="progress-section hidden">
+                        <div class="progress-header">
+                            <span>Processing emails...</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <div class="progress-stats" id="progress-stats">
+                            <span>0/0 processed</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="result-details" id="result-details"></div>
+                <!-- Bulk Results -->
+                <div id="bulk-results" class="bulk-results hidden">
+                    <div class="bulk-summary">
+                        <h3>Validation Complete</h3>
+                        <div class="summary-stats">
+                            <div class="stat-card valid">
+                                <span class="stat-value" id="valid-count">0</span>
+                                <span class="stat-label">Valid</span>
+                            </div>
+                            <div class="stat-card invalid">
+                                <span class="stat-value" id="invalid-count">0</span>
+                                <span class="stat-label">Invalid</span>
+                            </div>
+                            <div class="stat-card warning">
+                                <span class="stat-value" id="warning-count">0</span>
+                                <span class="stat-label">Warnings</span>
+                            </div>
+                            <div class="stat-card total">
+                                <span class="stat-value" id="total-count">0</span>
+                                <span class="stat-label">Total</span>
+                            </div>
+                        </div>
+                        <button id="export-btn" class="export-btn">
+                            <span>↓</span> Export Results (CSV)
+                        </button>
+                    </div>
+
+                    <!-- Results Table -->
+                    <div class="results-table-wrapper">
+                        <table class="results-table" id="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-body">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination" id="pagination">
+                        <button class="page-btn" id="prev-page" disabled>← Previous</button>
+                        <span class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></span>
+                        <button class="page-btn" id="next-page">Next →</button>
+                    </div>
+                </div>
             </div>
         </main>
 

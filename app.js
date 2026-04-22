@@ -1,6 +1,5 @@
-// Disposable email domain list (common ones)
+// Disposable email domain list (expanded)
 const disposableDomains = new Set([
-    // Temp mail services
     'tempmail.com', 'guerrillamail.com', 'mailinator.com', '10minutemail.com',
     'yopmail.com', 'throwaway.email', 'fakeinbox.com', 'temp-mail.org',
     'sharklasers.com', 'getairmail.com', 'maildrop.cc', 'incognitomail.com',
@@ -31,6 +30,7 @@ const disposableDomains = new Set([
     'afrosflix.co.uk', 'agmednet.com', 'ahead.eu', 'ai.ki', 'aimmail.info',
     'air2mail.com', 'airmail.box', 'airsi.de', 'ajaxapp.net', 'akapro.com',
     'akchiz.com', 'akjk.com', 'akul.in', 'active1.com',
+    // Add more as needed...
 ]);
 
 // Role-based email prefixes
@@ -40,6 +40,10 @@ const rolePrefixes = new Set([
     'hr', 'jobs', 'careers', 'marketing', 'webmaster', 'postmaster',
     'hostmaster', 'abuse', 'noreply', 'no-reply', 'noreply',
 ]);
+
+const BATCH_SIZE = 100;
+const MAX_EMAILS = 10000;
+const ITEMS_PER_PAGE = 50;
 
 class EmailValidator {
     constructor() {
@@ -51,20 +55,106 @@ class EmailValidator {
         this.statusMessage = document.getElementById('status-message');
         this.resultDetails = document.getElementById('result-details');
 
+        // Bulk mode elements
+        this.uploadArea = document.getElementById('upload-area');
+        this.fileInput = document.getElementById('file-input');
+        this.fileInfo = document.getElementById('file-info');
+        this.fileName = document.getElementById('file-name');
+        this.fileCount = document.getElementById('file-count');
+        this.removeFileBtn = document.getElementById('remove-file-btn');
+        this.bulkValidateBtn = document.getElementById('bulk-validate-btn');
+        this.progressSection = document.getElementById('progress-section');
+        this.progressFill = document.getElementById('progress-fill');
+        this.progressPercent = document.getElementById('progress-percent');
+        this.progressStats = document.getElementById('progress-stats');
+        this.bulkResults = document.getElementById('bulk-results');
+        this.resultsBody = document.getElementById('results-body');
+
+        // Bulk validation state
+        this.emailsToValidate = [];
+        this.validationResults = [];
+        this.currentPage = 1;
+        this.totalPages = 1;
+
         this.init();
     }
 
     init() {
-        this.validateBtn.addEventListener('click', () => this.validate());
+        this.setupModeToggle();
+        this.setupSingleMode();
+        this.setupBulkMode();
+    }
+
+    setupModeToggle() {
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.switchMode(btn.dataset.mode);
+            });
+        });
+    }
+
+    switchMode(mode) {
+        document.querySelectorAll('.mode-content').forEach(el => {
+            el.classList.remove('active');
+        });
+        document.getElementById(`${mode}-mode`).classList.add('active');
+
+        if (mode === 'bulk') {
+            document.querySelector('.container').classList.add('wide');
+        } else {
+            document.querySelector('.container').classList.remove('wide');
+        }
+    }
+
+    setupSingleMode() {
+        this.validateBtn.addEventListener('click', () => this.validateSingle());
         this.emailInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.validate();
+            if (e.key === 'Enter') this.validateSingle();
         });
         this.emailInput.addEventListener('input', () => {
             this.resultsDiv.classList.add('hidden');
         });
     }
 
-    validate() {
+    setupBulkMode() {
+        // File upload
+        this.uploadArea.addEventListener('click', () => this.fileInput.click());
+        this.uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            this.uploadArea.classList.add('dragover');
+        });
+        this.uploadArea.addEventListener('dragleave', () => {
+            this.uploadArea.classList.remove('dragover');
+        });
+        this.uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            this.uploadArea.classList.remove('dragover');
+            this.handleFile(e.dataTransfer.files[0]);
+        });
+        this.fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                this.handleFile(e.target.files[0]);
+            }
+        });
+
+        // Remove file
+        this.removeFileBtn.addEventListener('click', () => this.clearFile());
+
+        // Validate button
+        this.bulkValidateBtn.addEventListener('click', () => this.runBulkValidation());
+
+        // Export button
+        document.getElementById('export-btn').addEventListener('click', () => this.exportResults());
+
+        // Pagination
+        document.getElementById('prev-page').addEventListener('click', () => this.changePage(-1));
+        document.getElementById('next-page').addEventListener('click', () => this.changePage(1));
+    }
+
+    validateSingle() {
         const email = this.emailInput.value.trim().toLowerCase();
 
         if (!email) {
@@ -82,34 +172,40 @@ class EmailValidator {
             isSyntaxValid: false,
             isDisposable: false,
             isRoleBased: false,
-            hasMxRecords: null,
             domain: '',
             localPart: '',
-            suggestions: []
+            status: 'invalid',
+            details: []
         };
 
-        // Extract domain and local part
         const match = email.match(/^([^@]+)@(.+)$/);
         if (match) {
             results.localPart = match[1];
             results.domain = match[2];
         }
 
-        // Syntax validation using validator.js
         results.isSyntaxValid = validator.isEmail(email, {
             allow_display_name: false,
             require_tld: true,
             allow_ip_domain: false
         });
 
-        // Check for disposable domain
         results.isDisposable = disposableDomains.has(results.domain);
-
-        // Check for role-based email
         results.isRoleBased = rolePrefixes.has(results.localPart);
 
-        // MX record validation (would require server-side, so we note it)
-        results.hasMxRecords = 'Server-side check required';
+        // Determine status
+        if (!results.isSyntaxValid) {
+            results.status = 'invalid';
+            results.details.push('Invalid syntax');
+        } else if (results.isDisposable) {
+            results.status = 'warning';
+            results.details.push('Disposable email');
+        } else if (results.isRoleBased) {
+            results.status = 'warning';
+            results.details.push('Role-based address');
+        } else {
+            results.status = 'valid';
+        }
 
         return results;
     }
@@ -118,20 +214,14 @@ class EmailValidator {
         this.resultsDiv.classList.remove('hidden');
         this.resultDetails.innerHTML = '';
 
-        let isValid = results.isSyntaxValid && !results.isDisposable;
-        let isWarning = results.isSyntaxValid && results.isRoleBased;
-
-        if (isValid && !isWarning) {
+        if (results.status === 'valid') {
             this.showSuccess('Valid Email', 'This email address passes all basic validation checks.');
-        } else if (isWarning) {
-            this.showWarning('Role-Based Email', 'This is a role-based email address (e.g., info@, support@).');
-        } else if (!results.isSyntaxValid) {
+        } else if (results.status === 'warning') {
+            this.showWarning('Warning', results.details.join(', '));
+        } else {
             this.showError('Invalid Email', 'The email format is not valid.');
-        } else if (results.isDisposable) {
-            this.showWarning('Disposable Email', 'This email is from a temporary email service.');
         }
 
-        // Display details
         this.addDetailItem('Email Address', results.email, 'neutral');
         this.addDetailItem('Syntax', results.isSyntaxValid ? 'Valid' : 'Invalid', results.isSyntaxValid ? 'valid' : 'invalid');
         this.addDetailItem('Domain', results.domain || 'N/A', 'neutral');
@@ -143,9 +233,6 @@ class EmailValidator {
 
         this.addDetailItem('Disposable', results.isDisposable ? 'Yes' : 'No', results.isDisposable ? 'invalid' : 'valid');
         this.addDetailItem('Role-Based', results.isRoleBased ? 'Yes' : 'No', results.isRoleBased ? 'warning' : 'valid');
-
-        // Note about MX records
-        this.addDetailItem('MX Records', 'Check server-side', 'neutral');
     }
 
     showSuccess(title, message) {
@@ -195,6 +282,190 @@ class EmailValidator {
         item.appendChild(labelSpan);
         item.appendChild(valueDiv);
         this.resultDetails.appendChild(item);
+    }
+
+    async handleFile(file) {
+        if (!file) return;
+
+        const text = await file.text();
+        let emails = [];
+
+        // Parse based on file type
+        if (file.name.endsWith('.csv')) {
+            emails = this.parseCSV(text);
+        } else {
+            emails = this.parsePlainText(text);
+        }
+
+        // Limit to max emails
+        if (emails.length > MAX_EMAILS) {
+            alert(`File contains ${emails.length} emails. Only the first ${MAX_EMAILS} will be processed.`);
+            emails = emails.slice(0, MAX_EMAILS);
+        }
+
+        this.emailsToValidate = emails;
+        this.fileName.textContent = file.name;
+        this.fileCount.textContent = `${emails.length} email${emails.length !== 1 ? 's' : ''} found`;
+
+        this.uploadArea.classList.add('hidden');
+        this.fileInfo.classList.remove('hidden');
+        this.bulkValidateBtn.disabled = false;
+    }
+
+    parseCSV(text) {
+        const emails = [];
+        const lines = text.split('\n');
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // Try to parse as CSV (handle quoted values)
+            const match = trimmed.match(/^"?([^",@]+@[^",]+)"?,?/);
+            if (match) {
+                emails.push(match[1].toLowerCase());
+            } else if (trimmed.includes('@')) {
+                emails.push(trimmed.split(',')[0].toLowerCase());
+            }
+        }
+
+        return emails;
+    }
+
+    parsePlainText(text) {
+        return text
+            .split(/[\n\r,\s\t]+/)
+            .map(e => e.trim().toLowerCase())
+            .filter(e => e.includes('@'));
+    }
+
+    clearFile() {
+        this.emailsToValidate = [];
+        this.validationResults = [];
+        this.fileInput.value = '';
+        this.uploadArea.classList.remove('hidden');
+        this.fileInfo.classList.add('hidden');
+        this.bulkValidateBtn.disabled = true;
+        this.bulkResults.classList.add('hidden');
+        this.progressSection.classList.add('hidden');
+    }
+
+    async runBulkValidation() {
+        if (this.emailsToValidate.length === 0) return;
+
+        this.bulkValidateBtn.disabled = true;
+        this.progressSection.classList.remove('hidden');
+        this.bulkResults.classList.add('hidden');
+
+        this.validationResults = [];
+        let processed = 0;
+        const total = this.emailsToValidate.length;
+
+        // Process in batches to avoid UI blocking
+        for (let i = 0; i < this.emailsToValidate.length; i += BATCH_SIZE) {
+            const batch = this.emailsToValidate.slice(i, i + BATCH_SIZE);
+            const batchResults = batch.map(email => this.performValidation(email));
+            this.validationResults.push(...batchResults);
+
+            processed += batch.length;
+            this.updateProgress(processed, total);
+
+            // Allow UI to update
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        this.displayBulkResults();
+        this.bulkValidateBtn.disabled = false;
+    }
+
+    updateProgress(processed, total) {
+        const percent = Math.round((processed / total) * 100);
+        this.progressFill.style.width = `${percent}%`;
+        this.progressPercent.textContent = `${percent}%`;
+        this.progressStats.textContent = `${processed}/${total} processed`;
+    }
+
+    displayBulkResults() {
+        this.progressSection.classList.add('hidden');
+        this.bulkResults.classList.remove('hidden');
+
+        // Calculate stats
+        const valid = this.validationResults.filter(r => r.status === 'valid').length;
+        const invalid = this.validationResults.filter(r => r.status === 'invalid').length;
+        const warning = this.validationResults.filter(r => r.status === 'warning').length;
+
+        document.getElementById('valid-count').textContent = valid;
+        document.getElementById('invalid-count').textContent = invalid;
+        document.getElementById('warning-count').textContent = warning;
+        document.getElementById('total-count').textContent = this.validationResults.length;
+
+        this.currentPage = 1;
+        this.totalPages = Math.ceil(this.validationResults.length / ITEMS_PER_PAGE);
+        this.updateResultsTable();
+    }
+
+    updateResultsTable() {
+        this.resultsBody.innerHTML = '';
+
+        const start = (this.currentPage - 1) * ITEMS_PER_PAGE;
+        const end = start + ITEMS_PER_PAGE;
+        const pageResults = this.validationResults.slice(start, end);
+
+        pageResults.forEach(result => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${this.escapeHtml(result.email)}</td>
+                <td><span class="status-badge ${result.status}">${result.status}</span></td>
+                <td>
+                    <div class="detail-tags">
+                        ${result.details.map(d => `<span class="detail-tag">${this.escapeHtml(d)}</span>`).join('')}
+                        ${result.details.length === 0 ? '<span class="detail-tag">Clean</span>' : ''}
+                    </div>
+                </td>
+            `;
+            this.resultsBody.appendChild(row);
+        });
+
+        // Update pagination
+        document.getElementById('current-page').textContent = this.currentPage;
+        document.getElementById('total-pages').textContent = this.totalPages;
+        document.getElementById('prev-page').disabled = this.currentPage === 1;
+        document.getElementById('next-page').disabled = this.currentPage === this.totalPages;
+    }
+
+    changePage(delta) {
+        this.currentPage += delta;
+        this.updateResultsTable();
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    exportResults() {
+        const headers = ['Email', 'Status', 'Details', 'Domain', 'Disposable', 'Role-Based'];
+        const rows = this.validationResults.map(r => [
+            r.email,
+            r.status,
+            r.details.join('; '),
+            r.domain,
+            r.isDisposable ? 'Yes' : 'No',
+            r.isRoleBased ? 'Yes' : 'No'
+        ]);
+
+        const csv = [headers, ...rows]
+            .map(row => row.map(cell => `"${cell}"`).join(','))
+            .join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `email-validation-results-${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 }
 
