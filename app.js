@@ -121,21 +121,46 @@ class EmailValidator {
 
     setupBulkMode() {
         // File upload
-        this.uploadArea.addEventListener('click', () => this.fileInput.click());
+        this.uploadArea.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.fileInput.click();
+        });
+
+        // Prevent default drag behaviors on the whole document
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
+        });
+
         this.uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             this.uploadArea.classList.add('dragover');
         });
-        this.uploadArea.addEventListener('dragleave', () => {
-            this.uploadArea.classList.remove('dragover');
+
+        this.uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Only remove class if leaving the upload area itself
+            if (e.target === this.uploadArea) {
+                this.uploadArea.classList.remove('dragover');
+            }
         });
+
         this.uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             this.uploadArea.classList.remove('dragover');
-            this.handleFile(e.dataTransfer.files[0]);
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                this.handleFile(files[0]);
+            }
         });
+
         this.fileInput.addEventListener('change', (e) => {
-            if (e.target.files[0]) {
+            if (e.target.files && e.target.files.length > 0) {
                 this.handleFile(e.target.files[0]);
             }
         });
