@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Email Validator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Free Email Validator</h1>
+            <p>Validate emails instantly - 100% free, no signup required</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <label for="email-input">Enter email address:</label>
+                <input
+                    type="email"
+                    id="email-input"
+                    placeholder="user@example.com"
+                    autocomplete="email"
+                    spellcheck="false"
+                >
+                <button id="validate-btn">Validate</button>
+            </div>
+
+            <div id="results" class="results hidden">
+                <div class="result-card status-card">
+                    <div class="result-icon" id="status-icon"></div>
+                    <div class="result-content">
+                        <h3 id="status-title"></h3>
+                        <p id="status-message"></p>
+                    </div>
+                </div>
+
+                <div class="result-details" id="result-details"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by open source libraries • <a href="https://github.com/validatorjs/validator.js">validator.js</a> & <a href="https://github.com/FGRibreau/mailchecker">MailChecker</a></p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/validator@13.12.0/validator.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
