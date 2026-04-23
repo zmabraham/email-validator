@@ -45,6 +45,10 @@ const BATCH_SIZE = 100;
 const MAX_EMAILS = 10000;
 const ITEMS_PER_PAGE = 50;
 
+// API Configuration - Set your server URL here
+const API_BASE = window.EMAIL_VALIDATOR_API || '';
+const USE_SERVER_VALIDATION = API_BASE.length > 0;
+
 class EmailValidator {
     constructor() {
         this.emailInput = document.getElementById('email-input');
@@ -179,7 +183,7 @@ class EmailValidator {
         document.getElementById('next-page').addEventListener('click', () => this.changePage(1));
     }
 
-    validateSingle() {
+    async validateSingle() {
         const email = this.emailInput.value.trim().toLowerCase();
 
         if (!email) {
@@ -187,11 +191,102 @@ class EmailValidator {
             return;
         }
 
-        const results = this.performValidation(email);
-        this.displayResults(results);
+        // Show loading state
+        this.validateBtn.disabled = true;
+        this.validateBtn.textContent = 'Validating...';
+
+        try {
+            let results;
+
+            if (USE_SERVER_VALIDATION) {
+                // Try server-side validation first
+                results = await this.serverValidation(email);
+            } else {
+                // Client-side only
+                results = this.clientValidation(email);
+            }
+
+            this.displayResults(results);
+        } catch (error) {
+            console.error('Validation error:', error);
+            // Fall back to client-side validation
+            const results = this.clientValidation(email);
+            results.serverError = true;
+            this.displayResults(results);
+        } finally {
+            this.validateBtn.disabled = false;
+            this.validateBtn.textContent = 'Validate';
+        }
     }
 
-    performValidation(email) {
+    async serverValidation(email) {
+        try {
+            const response = await fetch(`${API_BASE}/api/validate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Transform server response to match client format
+            return {
+                email: data.email,
+                isSyntaxValid: data.isSyntaxValid,
+                isDisposable: data.isDisposable,
+                isRoleBased: data.isRoleBased,
+                hasMxRecord: data.hasMxRecord,
+                isSmtpValid: data.isSmtpValid,
+                isCatchAll: data.isCatchAll,
+                wasGreylisted: data.wasGreylisted,
+                domain: data.domain,
+                localPart: data.localPart,
+                status: data.status,
+                details: this.getServerDetails(data),
+                mxRecords: data.mxRecords || []
+            };
+        } catch (error) {
+            console.warn('Server validation failed, falling back to client-side:', error);
+            throw error;
+        }
+    }
+
+    getServerDetails(data) {
+        const details = [];
+
+        if (!data.isSyntaxValid) {
+            details.push('Invalid syntax');
+        }
+        if (!data.hasMxRecord) {
+            details.push('No MX records');
+        }
+        if (data.hasMxRecord && !data.isSmtpValid) {
+            details.push('SMTP verification failed');
+        }
+        if (data.isDisposable) {
+            details.push('Disposable email');
+        }
+        if (data.isRoleBased) {
+            details.push('Role-based address');
+        }
+        if (data.isCatchAll) {
+            details.push('Catch-all domain');
+        }
+        if (data.wasGreylisted) {
+            details.push('Greylisted (retried)');
+        }
+        if (data.isSmtpValid && !data.isDisposable && !data.isRoleBased && !data.isCatchAll) {
+            details.push('Verified deliverable');
+        }
+
+        return details;
+    }
+
+    clientValidation(email) {
         const results = {
             email,
             isSyntaxValid: false,
@@ -239,12 +334,33 @@ class EmailValidator {
         this.resultsDiv.classList.remove('hidden');
         this.resultDetails.innerHTML = '';
 
+        // Update status message based on server-side validation
+        let statusMessage = '';
         if (results.status === 'valid') {
-            this.showSuccess('Valid Email', 'This email address passes all basic validation checks.');
+            if (results.isSmtpValid) {
+                statusMessage = 'Email is deliverable and verified.';
+            } else {
+                statusMessage = 'Email passes basic validation checks.';
+            }
+            this.showSuccess('Valid Email', statusMessage);
         } else if (results.status === 'warning') {
             this.showWarning('Warning', results.details.join(', '));
         } else {
-            this.showError('Invalid Email', 'The email format is not valid.');
+            if (results.hasMxRecord && !results.isSmtpValid) {
+                statusMessage = 'Email exists but mailbox verification failed.';
+            } else {
+                statusMessage = 'The email format is not valid or domain does not exist.';
+            }
+            this.showError('Invalid Email', statusMessage);
+        }
+
+        // Show server error warning if applicable
+        if (results.serverError) {
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'server-warning';
+            warningDiv.textContent = '⚠️ Server unavailable. Showing client-side validation only.';
+            warningDiv.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: var(--warning); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;';
+            this.resultDetails.appendChild(warningDiv);
         }
 
         this.addDetailItem('Email Address', results.email, 'neutral');
@@ -258,6 +374,23 @@ class EmailValidator {
 
         this.addDetailItem('Disposable', results.isDisposable ? 'Yes' : 'No', results.isDisposable ? 'invalid' : 'valid');
         this.addDetailItem('Role-Based', results.isRoleBased ? 'Yes' : 'No', results.isRoleBased ? 'warning' : 'valid');
+
+        // Server-side validation details
+        if (results.hasMxRecord !== undefined) {
+            this.addDetailItem('MX Records', results.hasMxRecord ? `Found (${results.mxRecords?.length || 0})` : 'None', results.hasMxRecord ? 'valid' : 'invalid');
+        }
+
+        if (results.isSmtpValid !== undefined) {
+            this.addDetailItem('SMTP Verified', results.isSmtpValid ? 'Yes' : 'No', results.isSmtpValid ? 'valid' : 'invalid');
+        }
+
+        if (results.isCatchAll !== undefined && results.isCatchAll) {
+            this.addDetailItem('Catch-All', 'Yes', 'warning');
+        }
+
+        if (results.wasGreylisted) {
+            this.addDetailItem('Greylisted', 'Retried successfully', 'warning');
+        }
     }
 
     showSuccess(title, message) {
@@ -386,10 +519,73 @@ class EmailValidator {
         let processed = 0;
         const total = this.emailsToValidate.length;
 
+        // Use server-side validation if available
+        if (USE_SERVER_VALIDATION) {
+            await this.runBulkValidationServer(total, processed);
+        } else {
+            await this.runBulkValidationClient(total, processed);
+        }
+
+        this.displayBulkResults();
+        this.bulkValidateBtn.disabled = false;
+    }
+
+    async runBulkValidationServer(total, processed) {
+        const batchSize = 100; // Server can handle more
+
+        for (let i = 0; i < this.emailsToValidate.length; i += batchSize) {
+            const batch = this.emailsToValidate.slice(i, i + batchSize);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/validate/bulk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emails: batch })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Transform server results to match client format
+                const batchResults = data.results.map(r => ({
+                    email: r.email,
+                    isSyntaxValid: r.isSyntaxValid,
+                    isDisposable: r.isDisposable,
+                    isRoleBased: r.isRoleBased,
+                    hasMxRecord: r.hasMxRecord,
+                    isSmtpValid: r.isSmtpValid,
+                    isCatchAll: r.isCatchAll,
+                    wasGreylisted: r.wasGreylisted,
+                    domain: r.domain,
+                    localPart: r.localPart,
+                    status: r.status,
+                    details: r.details || this.getServerDetails(r)
+                }));
+
+                this.validationResults.push(...batchResults);
+            } catch (error) {
+                console.warn(`Server bulk validation failed for batch ${i / batchSize}, falling back to client:`, error);
+                // Fall back to client-side for this batch
+                const batchResults = batch.map(email => this.clientValidation(email));
+                this.validationResults.push(...batchResults);
+            }
+
+            processed += batch.length;
+            this.updateProgress(processed, total);
+
+            // Small delay to avoid overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    async runBulkValidationClient(total, processed) {
         // Process in batches to avoid UI blocking
         for (let i = 0; i < this.emailsToValidate.length; i += BATCH_SIZE) {
             const batch = this.emailsToValidate.slice(i, i + BATCH_SIZE);
-            const batchResults = batch.map(email => this.performValidation(email));
+            const batchResults = batch.map(email => this.clientValidation(email));
             this.validationResults.push(...batchResults);
 
             processed += batch.length;
@@ -398,9 +594,6 @@ class EmailValidator {
             // Allow UI to update
             await new Promise(resolve => setTimeout(resolve, 10));
         }
-
-        this.displayBulkResults();
-        this.bulkValidateBtn.disabled = false;
     }
 
     updateProgress(processed, total) {

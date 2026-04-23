@@ -149,8 +149,20 @@
 
         <footer>
             <p>Powered by open source libraries • <a href="https://github.com/validatorjs/validator.js">validator.js</a> & <a href="https://github.com/FGRibreau/mailchecker">MailChecker</a></p>
+            <p style="margin-top: 8px; font-size: 0.85rem;">
+                <a href="https://github.com/zmabraham/email-validator-server" target="_blank">Get the Server</a> •
+                <a href="https://github.com/zmabraham/email-validator" target="_blank">GitHub</a>
+            </p>
         </footer>
     </div>
+
+    <!-- Configure API endpoint (optional) -->
+    <script>
+        // Set your server URL here to enable advanced validation (SMTP, MX, catch-all)
+        // Leave empty to use client-side validation only
+        window.EMAIL_VALIDATOR_API = '';
+        // Example: window.EMAIL_VALIDATOR_API = 'https://your-api.railway.app';
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/validator@13.12.0/validator.min.js"></script>
     <script src="app.js"></script>
